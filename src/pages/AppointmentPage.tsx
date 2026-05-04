@@ -1,7 +1,8 @@
 // G006 全院医技检查预约系统 - 预约管理页面
 import { useState } from 'react';
-import { Search, Plus, Filter, Calendar, Clock, Phone, Edit2, Eye, X, ChevronDown, CheckCircle, Stethoscope, RefreshCw, CalendarDays, User } from 'lucide-react';
+import { Search, Plus, Filter, Calendar, Clock, Phone, Edit2, Eye, X, ChevronDown, CheckCircle, Stethoscope, RefreshCw, CalendarDays, User, AlertTriangle, ShieldAlert, Info, AlertCircle } from 'lucide-react';
 import { APPOINTMENTS } from '../data/initialData';
+import { evaluateRules, type RuleEngineContext, type RuleEvaluationResult } from '../data/rulesData';
 import type { Appointment, AppointmentStatus } from '../types';
 
 // 状态颜色映射 - 彩色标签
@@ -16,14 +17,14 @@ const STATUS_OPTIONS = ['全部', '待确认', '已确认', '已完成', '已取
 const TIME_SLOTS = ['08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00'];
 
 const DEVICES = [
-  { id: 'DEV001', name: 'CT-01 (西门子 Definition AS+)' },
-  { id: 'DEV002', name: 'CT-02 (GE Revolution)' },
-  { id: 'DEV003', name: 'MRI-01 (西门子 MAGNETOM Vida)' },
-  { id: 'DEV005', name: '超声-01 (迈瑞 Resona 7)' },
-  { id: 'DEV006', name: '超声-02 (GE Voluson E10)' },
-  { id: 'DEV007', name: '内镜-01 (奥林巴斯 290)' },
-  { id: 'DEV008', name: '心电图-01 (GE MAC 2000)' },
-  { id: 'DEV009', name: 'DR-01 (西门子 Ysio)' },
+  { id: 'DEV001', name: 'CT-01 (西门子 Definition AS+)', usedSlots: 28 },
+  { id: 'DEV002', name: 'CT-02 (GE Revolution)', usedSlots: 35 },
+  { id: 'DEV003', name: 'MRI-01 (西门子 MAGNETOM Vida)', usedSlots: 20 },
+  { id: 'DEV005', name: '超声-01 (迈瑞 Resona 7)', usedSlots: 32 },
+  { id: 'DEV006', name: '超声-02 (GE Voluson E10)', usedSlots: 18 },
+  { id: 'DEV007', name: '内镜-01 (奥林巴斯 290)', usedSlots: 12 },
+  { id: 'DEV008', name: '心电图-01 (GE MAC 2000)', usedSlots: 45 },
+  { id: 'DEV009', name: 'DR-01 (西门子 Ysio)', usedSlots: 30 },
 ];
 
 const EXAM_ITEMS = [
@@ -45,16 +46,16 @@ const EXAM_ITEMS = [
 ];
 
 const PATIENTS = [
-  { id: 'P001', name: '李建国', gender: '男', age: 58, phone: '13812345601' },
-  { id: 'P002', name: '王秀英', gender: '女', age: 45, phone: '13912345602' },
-  { id: 'P003', name: '张伟', gender: '男', age: 32, phone: '13712345603' },
-  { id: 'P004', name: '刘芳', gender: '女', age: 67, phone: '13612345604' },
-  { id: 'P005', name: '陈强', gender: '男', age: 28, phone: '13512345605' },
-  { id: 'P006', name: '赵敏', gender: '女', age: 51, phone: '13412345606' },
-  { id: 'P007', name: '孙磊', gender: '男', age: 73, phone: '13312345607' },
-  { id: 'P008', name: '周婷', gender: '女', age: 39, phone: '13212345608' },
-  { id: 'P009', name: '吴浩', gender: '男', age: 44, phone: '13112345609' },
-  { id: 'P010', name: '郑静', gender: '女', age: 62, phone: '13012345610' },
+  { id: 'P001', name: '李建国', gender: '男', age: 58, phone: '13812345601', patientType: '门诊' as const },
+  { id: 'P002', name: '王秀英', gender: '女', age: 45, phone: '13912345602', patientType: '门诊' as const },
+  { id: 'P003', name: '张伟', gender: '男', age: 32, phone: '13712345603', patientType: '住院' as const },
+  { id: 'P004', name: '刘芳', gender: '女', age: 67, phone: '13612345604', patientType: '体检' as const },
+  { id: 'P005', name: '陈强', gender: '男', age: 28, phone: '13512345605', patientType: '门诊' as const },
+  { id: 'P006', name: '赵敏', gender: '女', age: 51, phone: '13412345606', patientType: '门诊' as const },
+  { id: 'P007', name: '孙磊', gender: '男', age: 73, phone: '13312345607', patientType: '住院' as const },
+  { id: 'P008', name: '周婷', gender: '女', age: 39, phone: '13212345608', patientType: '门诊' as const },
+  { id: 'P009', name: '吴浩', gender: '男', age: 44, phone: '13112345609', patientType: '体检' as const },
+  { id: 'P010', name: '郑静', gender: '女', age: 62, phone: '13012345610', patientType: '门诊' as const },
 ];
 
 export default function AppointmentPage({ currentRole }: { currentRole: string }) {
@@ -66,6 +67,8 @@ export default function AppointmentPage({ currentRole }: { currentRole: string }
   const [modalType, setModalType] = useState<'view' | 'edit' | 'create'>('view');
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [newForm, setNewForm] = useState({ patientId: '', patientName: '', gender: '男', age: 0, phone: '', examItemId: '', deviceId: '', appointmentDate: '2026-05-02', appointmentTime: '08:00-09:00', clinicalDiagnosis: '', isUrgent: false });
+  const [ruleModal, setRuleModal] = useState<{ show: boolean; result: RuleEvaluationResult | null; context: RuleEngineContext | null }>({ show: false, result: null, context: null });
+  const [forceCreate, setForceCreate] = useState(false);
 
   const filteredAppointments = appointments.filter(apt => {
     const matchesSearch = searchText === '' || apt.patientName.includes(searchText) || apt.phone.includes(searchText) || apt.id.includes(searchText);
@@ -83,15 +86,67 @@ export default function AppointmentPage({ currentRole }: { currentRole: string }
 
   const handleView = (apt: Appointment) => { setSelectedAppointment(apt); setModalType('view'); setShowModal(true); };
   const handleEdit = (apt: Appointment) => { setSelectedAppointment(apt); setModalType('edit'); setShowModal(true); };
-  const handleCreate = () => { setSelectedAppointment(null); setModalType('create'); setNewForm({ patientId: '', patientName: '', gender: '男', age: 0, phone: '', examItemId: '', deviceId: '', appointmentDate: '2026-05-02', appointmentTime: '08:00-09:00', clinicalDiagnosis: '', isUrgent: false }); setShowModal(true); };
+  const handleCreate = () => { setSelectedAppointment(null); setModalType('create'); setNewForm({ patientId: '', patientName: '', gender: '男', age: 0, phone: '', examItemId: '', deviceId: '', appointmentDate: '2026-05-02', appointmentTime: '08:00-09:00', clinicalDiagnosis: '', isUrgent: false }); setShowModal(true); setForceCreate(false); };
 
   const handlePatientSelect = (patientId: string) => {
     const patient = PATIENTS.find(p => p.id === patientId);
     if (patient) setNewForm(prev => ({ ...prev, patientId: patient.id, patientName: patient.name, gender: patient.gender, age: patient.age, phone: patient.phone }));
   };
 
+  // 验证预约规则
+  const validateAppointmentRules = (formData: typeof newForm): RuleEvaluationResult => {
+    const examItem = EXAM_ITEMS.find(e => e.id === formData.examItemId);
+    const patient = PATIENTS.find(p => p.id === formData.patientId);
+    
+    const context: RuleEngineContext = {
+      appointment: {
+        patientId: formData.patientId || `P${String(appointments.length + 1).padStart(3, '0')}`,
+        patientName: formData.patientName,
+        examItemId: formData.examItemId,
+        examItemName: examItem?.name || '',
+        modality: examItem?.modality || '',
+        deviceId: formData.deviceId,
+        appointmentDate: formData.appointmentDate,
+        appointmentTime: formData.appointmentTime,
+        clinicalDiagnosis: formData.clinicalDiagnosis,
+        isUrgent: formData.isUrgent,
+      },
+      existingAppointments: appointments,
+      patientAge: patient?.age || formData.age,
+      patientGender: patient?.gender || formData.gender,
+      patientType: patient?.patientType || '门诊',
+      isUrgent: formData.isUrgent,
+      waitingDays: 0,
+      deviceUsedSlots: DEVICES.find(d => d.id === formData.deviceId)?.usedSlots || 0,
+    };
+    
+    return evaluateRules(context);
+  };
+
   const handleCreateSubmit = () => {
     if (!newForm.patientName || !newForm.examItemId || !newForm.deviceId) { alert('请填写完整信息'); return; }
+    
+    // 规则验证
+    if (!forceCreate) {
+      const validationResult = validateAppointmentRules(newForm);
+      
+      // 如果有错误级别的违规，弹出规则拦截窗口
+      if (!validationResult.passed && validationResult.violations.some(v => v.severity === 'error')) {
+        setRuleModal({ show: true, result: validationResult, context: null });
+        return;
+      }
+      
+      // 如果有警告，显示确认窗口
+      if (validationResult.warnings.length > 0) {
+        setRuleModal({ show: true, result: validationResult, context: null });
+        return;
+      }
+    }
+    
+    proceedWithCreate();
+  };
+  
+  const proceedWithCreate = () => {
     const examItem = EXAM_ITEMS.find(e => e.id === newForm.examItemId);
     const device = DEVICES.find(d => d.id === newForm.deviceId);
     const apt: Appointment = {
@@ -103,7 +158,7 @@ export default function AppointmentPage({ currentRole }: { currentRole: string }
       status: '待确认', registrationType: '门诊', clinicalDiagnosis: newForm.clinicalDiagnosis, clinicalInfo: '', isUrgent: newForm.isUrgent,
       checkInTime: undefined, reportStatus: '未写', createdAt: new Date().toLocaleString(), updatedAt: new Date().toLocaleString(),
     };
-    setAppointments(prev => [...prev, apt]); setShowModal(false);
+    setAppointments(prev => [...prev, apt]); setShowModal(false); setRuleModal({ show: false, result: null, context: null }); setForceCreate(false);
   };
 
   const handleStatusChange = (aptId: string, newStatus: AppointmentStatus) => {
@@ -370,6 +425,196 @@ export default function AppointmentPage({ currentRole }: { currentRole: string }
                   {selectedAppointment.status !== '已完成' && selectedAppointment.status !== '已取消' && <button onClick={() => { handleStatusChange(selectedAppointment.id, '已取消'); setShowModal(false); }} style={{ padding: '10px 20px', border: 'none', borderRadius: 4, fontSize: 13, background: '#ef4444', color: '#ffffff', cursor: 'pointer', fontWeight: 600 }}>取消预约</button>}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 规则拦截弹窗 */}
+      {ruleModal.show && ruleModal.result && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#ffffff', borderRadius: 12, width: '90%', maxWidth: 560, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 12px 48px rgba(0,0,0,0.3)' }}>
+            {/* 弹窗头部 */}
+            <div style={{ 
+              padding: '20px 24px', 
+              borderBottom: '1px solid #e5e7eb',
+              background: ruleModal.result.violations.length > 0 ? '#fef2f2' : '#fffbeb',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {ruleModal.result.violations.length > 0 ? (
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldAlert size={24} color="#dc2626" />
+                  </div>
+                ) : (
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertTriangle size={24} color="#d97706" />
+                  </div>
+                )}
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
+                    {ruleModal.result.violations.length > 0 ? '规则拦截' : '规则提醒'}
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0 0' }}>
+                    检测到 {ruleModal.result.violations.length} 个错误, {ruleModal.result.warnings.length} 个警告
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 弹窗内容 */}
+            <div style={{ padding: 20 }}>
+              {/* 错误列表 */}
+              {ruleModal.result.violations.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <AlertCircle size={16} color="#dc2626" />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#dc2626' }}>错误 (Error)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {ruleModal.result.violations.map((violation, idx) => (
+                      <div key={idx} style={{ 
+                        padding: 14, 
+                        background: '#fee2e2', 
+                        borderRadius: 8, 
+                        borderLeft: `4px solid #ef4444`,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ padding: '2px 8px', background: '#ef4444', color: '#ffffff', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>ERR</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#991b1b' }}>{violation.ruleName}</span>
+                        </div>
+                        <p style={{ fontSize: 13, color: '#7f1d1d', margin: 0, lineHeight: 1.5 }}>{violation.message}</p>
+                        {violation.suggestedFix && (
+                          <div style={{ marginTop: 8, padding: '8px 10px', background: '#fecaca', borderRadius: 4, fontSize: 12, color: '#b91c1c' }}>
+                            <Info size={12} style={{ display: 'inline', marginRight: 4 }} />
+                            建议: {violation.suggestedFix}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 警告列表 */}
+              {ruleModal.result.warnings.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <AlertTriangle size={16} color="#d97706" />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#d97706' }}>警告 (Warning)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {ruleModal.result.warnings.map((warning, idx) => (
+                      <div key={idx} style={{ 
+                        padding: 14, 
+                        background: '#fef3c7', 
+                        borderRadius: 8, 
+                        borderLeft: `4px solid #f59e0b`,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ padding: '2px 8px', background: '#f59e0b', color: '#ffffff', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>WARN</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>{warning.ruleName}</span>
+                        </div>
+                        <p style={{ fontSize: 13, color: '#78350f', margin: 0, lineHeight: 1.5 }}>{warning.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 建议时段 */}
+              {ruleModal.result.suggestedSlots.length > 0 && (
+                <div style={{ 
+                  padding: 14, 
+                  background: '#eff6ff', 
+                  borderRadius: 8, 
+                  border: '1px solid #bfdbfe',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <Clock size={16} color="#1e40af" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1e40af' }}>建议替代时段</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {ruleModal.result.suggestedSlots.map((slot, idx) => (
+                      <span key={idx} style={{ 
+                        padding: '6px 12px', 
+                        background: '#dbeafe', 
+                        color: '#1e40af', 
+                        borderRadius: 6, 
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}>
+                        {slot}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 优先级信息 */}
+              <div style={{ marginTop: 16, padding: '12px 14px', background: '#f9fafb', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>综合优先级分数</div>
+                <div style={{ 
+                  padding: '4px 12px', 
+                  background: '#1e40af', 
+                  color: '#ffffff', 
+                  borderRadius: 12, 
+                  fontSize: 13, 
+                  fontWeight: 700 
+                }}>
+                  {ruleModal.result.priorityScore} 分
+                </div>
+              </div>
+            </div>
+
+            {/* 弹窗底部 */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button 
+                onClick={() => { setRuleModal({ show: false, result: null, context: null }); setForceCreate(false); }}
+                style={{ 
+                  padding: '10px 20px', 
+                  border: '1px solid #d1d5db', 
+                  borderRadius: 6, 
+                  fontSize: 13, 
+                  background: '#ffffff', 
+                  cursor: 'pointer',
+                  color: '#374151',
+                }}
+              >
+                取消预约
+              </button>
+              {ruleModal.result.warnings.length > 0 && ruleModal.result.violations.length === 0 && (
+                <button 
+                  onClick={() => { setForceCreate(true); proceedWithCreate(); }}
+                  style={{ 
+                    padding: '10px 20px', 
+                    border: 'none', 
+                    borderRadius: 6, 
+                    fontSize: 13, 
+                    background: '#f59e0b', 
+                    color: '#ffffff', 
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  确认继续创建
+                </button>
+              )}
+              <button 
+                onClick={() => { setRuleModal({ show: false, result: null, context: null }); setForceCreate(false); }}
+                style={{ 
+                  padding: '10px 20px', 
+                  border: 'none', 
+                  borderRadius: 6, 
+                  fontSize: 13, 
+                  background: '#1e40af', 
+                  color: '#ffffff', 
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                返回修改
+              </button>
             </div>
           </div>
         </div>

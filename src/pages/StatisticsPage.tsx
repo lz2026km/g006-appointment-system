@@ -2,7 +2,8 @@
 import {
   BarChart3, TrendingUp, Calendar, Clock, Users,
   CheckCircle, AlertTriangle, Monitor, PieChart,
-  Activity, ArrowUp, ArrowDown, Minus
+  Activity, ArrowUp, ArrowDown, Minus, ShieldCheck,
+  FileCheck, Timer, TrendingDown
 } from 'lucide-react';
 import { APPOINTMENTS, DEVICES, STATISTICS, DEPARTMENTS } from '../data/initialData';
 
@@ -32,6 +33,55 @@ const StatisticsPage = ({ currentRole: _currentRole }: StatisticsPageProps) => {
   const lastWeekTotal = 980;
   const thisWeekTotal = STATISTICS.totalAppointments;
   const weekChange = Math.round(((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100);
+
+  // ============ 新增：同比环比数据 ============
+  // 质控指标
+  const qualityMetrics = {
+    appointmentSuccessRate: 94.5,
+    noShowRate: 4.2,
+    avgWaitTime: 18,
+    reportTimelinessRate: 87.3,
+    // 同比
+    successRateYoY: 2.3,
+    noShowRateYoY: -0.8,
+    avgWaitTimeYoY: -3.2,
+    reportRateYoY: 4.5,
+    // 环比
+    successRateMoM: 1.5,
+    noShowRateMoM: -0.3,
+    avgWaitTimeMoM: -1.1,
+    reportRateMoM: 2.1,
+  };
+
+  // 近30天趋势数据
+  const monthlyTrend = [
+    { date: '04-03', appointments: 135, completion: 118, noShow: 6 },
+    { date: '04-05', appointments: 142, completion: 125, noShow: 7 },
+    { date: '04-07', appointments: 138, completion: 120, noShow: 6 },
+    { date: '04-09', appointments: 145, completion: 128, noShow: 7 },
+    { date: '04-11', appointments: 152, completion: 135, noShow: 6 },
+    { date: '04-13', appointments: 148, completion: 130, noShow: 7 },
+    { date: '04-15', appointments: 155, completion: 138, noShow: 6 },
+    { date: '04-17', appointments: 162, completion: 145, noShow: 7 },
+    { date: '04-19', appointments: 158, completion: 140, noShow: 7 },
+    { date: '04-21', appointments: 165, completion: 148, noShow: 6 },
+    { date: '04-23', appointments: 170, completion: 152, noShow: 7 },
+    { date: '04-25', appointments: 168, completion: 150, noShow: 6 },
+    { date: '04-27', appointments: 172, completion: 155, noShow: 7 },
+    { date: '04-29', appointments: 175, completion: 158, noShow: 6 },
+    { date: '05-01', appointments: 98, completion: 85, noShow: 5 },
+    { date: '05-02', appointments: 158, completion: 142, noShow: 6 },
+  ];
+
+  // 各检查类型完成率
+  const modalityCompletion = [
+    { name: 'CT', completed: 55, total: 60, rate: 91.7 },
+    { name: 'MRI', completed: 24, total: 25, rate: 96.0 },
+    { name: '超声', completed: 65, total: 68, rate: 95.6 },
+    { name: '内镜', completed: 16, total: 18, rate: 88.9 },
+    { name: '心电', completed: 44, total: 45, rate: 97.8 },
+    { name: 'X光', completed: 30, total: 32, rate: 93.8 },
+  ];
 
   // 检查状态分布
   const statusDistribution = [
@@ -105,6 +155,76 @@ const StatisticsPage = ({ currentRole: _currentRole }: StatisticsPageProps) => {
       </div>
     </div>
   );
+
+  // ============ 新增：KPI质控卡片 ============
+  const QCKPICard: React.FC<{
+    title: string;
+    value: string | number;
+    unit?: string;
+    icon: React.ReactNode;
+    color: string;
+    bgColor: string;
+    yoy?: number;
+    mom?: number;
+    status?: 'good' | 'warning' | 'danger';
+  }> = ({ title, value, unit, icon, color, bgColor, yoy, mom, status }) => {
+    const statusColor = status === 'good' ? '#059669' : status === 'warning' ? '#d97706' : status === 'danger' ? '#dc2626' : '#666';
+    return (
+      <div style={{
+        background: '#fff',
+        borderRadius: 12,
+        padding: 16,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: bgColor,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: color,
+            flexShrink: 0,
+          }}>
+            {icon}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>{title}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+              <span style={{ fontSize: 22, fontWeight: 700, color: '#333' }}>{value}</span>
+              {unit && <span style={{ fontSize: 12, color: '#666' }}>{unit}</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              {yoy !== undefined && (
+                <span style={{ fontSize: 10, color: yoy > 0 ? '#059669' : '#dc2626' }}>
+                  同比 {yoy > 0 ? '+' : ''}{yoy}%
+                </span>
+              )}
+              {mom !== undefined && (
+                <span style={{ fontSize: 10, color: mom > 0 ? '#059669' : '#dc2626' }}>
+                  环比 {mom > 0 ? '+' : ''}{mom}%
+                </span>
+              )}
+            </div>
+          </div>
+          {status && (
+            <div style={{
+              padding: '3px 6px',
+              borderRadius: 4,
+              fontSize: 10,
+              fontWeight: 500,
+              background: statusColor + '20',
+              color: statusColor,
+            }}>
+              {status === 'good' ? '达标' : status === 'warning' ? '预警' : '超标'}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // 简单柱状图组件
   const SimpleBar: React.FC<{ value: number; max: number; color: string }> = ({ value, max, color }) => (
@@ -186,6 +306,30 @@ const StatisticsPage = ({ currentRole: _currentRole }: StatisticsPageProps) => {
     );
   };
 
+  // 趋势迷你图
+  const MiniTrendChart: React.FC<{ data: { date: string; value: number }[]; color: string }> = ({ data, color }) => {
+    const max = Math.max(...data.map(d => d.value));
+    const min = Math.min(...data.map(d => d.value));
+    const range = max - min || 1;
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 40 }}>
+        {data.map((item, index) => {
+          const height = ((item.value - min) / range) * 30 + 10;
+          const isLatest = index === data.length - 1;
+          return (
+            <div key={index} style={{
+              flex: 1,
+              height: height,
+              background: isLatest ? color : color + '60',
+              borderRadius: '2px 2px 0 0',
+            }} />
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding: 24 }}>
       {/* 标题区 */}
@@ -194,6 +338,60 @@ const StatisticsPage = ({ currentRole: _currentRole }: StatisticsPageProps) => {
         <p style={{ fontSize: 14, color: '#666', margin: '8px 0 0 0' }}>
           汉东省人民医院 · 全院医技检查预约系统 · {today}
         </p>
+      </div>
+
+      {/* ============ 新增：质控KPI卡片 ============ */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 600, color: '#333', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ShieldCheck size={16} color="#1e40af" />
+          质控指标概览
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          <QCKPICard
+            title="预约成功率"
+            value={qualityMetrics.appointmentSuccessRate}
+            unit="%"
+            icon={<CheckCircle size={18} />}
+            color="#059669"
+            bgColor="#ecfdf5"
+            yoy={qualityMetrics.successRateYoY}
+            mom={qualityMetrics.successRateMoM}
+            status="good"
+          />
+          <QCKPICard
+            title="爽约率"
+            value={qualityMetrics.noShowRate}
+            unit="%"
+            icon={<AlertTriangle size={18} />}
+            color="#d97706"
+            bgColor="#fffbeb"
+            yoy={qualityMetrics.noShowRateYoY}
+            mom={qualityMetrics.noShowRateMoM}
+            status="warning"
+          />
+          <QCKPICard
+            title="平均等候时长"
+            value={qualityMetrics.avgWaitTime}
+            unit="分钟"
+            icon={<Timer size={18} />}
+            color="#1e40af"
+            bgColor="#eff6ff"
+            yoy={qualityMetrics.avgWaitTimeYoY}
+            mom={qualityMetrics.avgWaitTimeMoM}
+            status="good"
+          />
+          <QCKPICard
+            title="报告及时率"
+            value={qualityMetrics.reportTimelinessRate}
+            unit="%"
+            icon={<FileCheck size={18} />}
+            color="#7c3aed"
+            bgColor="#f5f3ff"
+            yoy={qualityMetrics.reportRateYoY}
+            mom={qualityMetrics.reportRateMoM}
+            status="good"
+          />
+        </div>
       </div>
 
       {/* 概览统计卡片 */}
@@ -267,6 +465,80 @@ const StatisticsPage = ({ currentRole: _currentRole }: StatisticsPageProps) => {
           color="#dc2626"
           bgColor="#fef2f2"
         />
+      </div>
+
+      {/* ============ 新增：同比环比趋势图 ============ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+        {/* 预约量趋势 */}
+        <div style={{
+          background: '#fff',
+          borderRadius: 12,
+          padding: 20,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#333', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <TrendingUp size={18} color="#1e40af" />
+            近30天预约量趋势
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 400, color: '#666' }}>
+              同比 +8.2% | 环比 +3.5%
+            </span>
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120 }}>
+            {monthlyTrend.map((item, index) => {
+              const maxCount = Math.max(...monthlyTrend.map(t => t.appointments));
+              const height = (item.appointments / maxCount) * 100;
+              const isToday = index === monthlyTrend.length - 1;
+              return (
+                <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{
+                    width: '100%',
+                    height: height,
+                    background: isToday ? '#1e40af' : '#93c5fd',
+                    borderRadius: '3px 3px 0 0',
+                    transition: 'height 0.3s',
+                    minHeight: 8,
+                  }} />
+                  {index % 3 === 0 && (
+                    <div style={{ fontSize: 8, color: '#999' }}>{item.date}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 各检查类型完成率 */}
+        <div style={{
+          background: '#fff',
+          borderRadius: 12,
+          padding: 20,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#333', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CheckCircle size={18} color="#1e40af" />
+            各检查类型完成率
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {modalityCompletion.map((item, index) => (
+              <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, fontSize: 12, color: '#333', fontWeight: 500 }}>{item.name}</div>
+                <div style={{ flex: 1 }}>
+                  <SimpleBar
+                    value={item.rate}
+                    max={100}
+                    color={item.rate >= 95 ? '#059669' : item.rate >= 90 ? '#d97706' : '#dc2626'}
+                  />
+                </div>
+                <div style={{ width: 80, fontSize: 12, color: '#666', textAlign: 'right' }}>
+                  {item.completed}/{item.total}
+                </div>
+                <div style={{ width: 40, fontSize: 12, fontWeight: 600, color: '#333', textAlign: 'right' }}>
+                  {item.rate}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 图表区域 */}

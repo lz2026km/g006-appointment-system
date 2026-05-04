@@ -1,11 +1,12 @@
-// G006 全院医技检查预约系统 - 号源管理页面
-import { useState, useMemo } from 'react';
+// G006 全院医技检查预约系统 - 号源管理页面（增强版）
+// 实时号源池视图 + 动态放号策略 + 临时加号 + 号源锁定
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search, Plus, Calendar, Clock, Monitor, X, ChevronDown,
   Edit2, Trash2, Eye, CheckCircle, AlertTriangle, ToggleLeft, ToggleRight,
-  CalendarDays, Filter
+  CalendarDays, Filter, Lock, Unlock, Zap, RefreshCw, EyeOff, Grid3X3
 } from 'lucide-react';
-import type { SlotSource, TimeSlot, Device } from '../types';
+import type { SlotSource, TimeSlot, Device, TempSlot, LockedSlot, ReleasePolicy, SlotReleaseStrategy } from '../types';
 import { SLOT_SOURCES, DEVICES, EXAM_ITEMS } from '../data/initialData';
 
 // 号源状态颜色
@@ -19,15 +20,46 @@ interface SlotSourcePageProps {
   currentRole: string;
 }
 
+// 放号策略预设
+const RELEASE_POLICY_PRESETS: Record<string, ReleasePolicy> = {
+  daily0800: { type: 'daily', dailyTime: '08:00', releaseInAdvance: 30 },
+  daily0830: { type: 'daily', dailyTime: '08:30', releaseInAdvance: 30 },
+  daily0900: { type: 'daily', dailyTime: '09:00', releaseInAdvance: 30 },
+  weeklyMonday: { type: 'weekly', weeklyDay: 1, dailyTime: '08:00', releaseInAdvance: 60 },
+  manual: { type: 'manual', releaseInAdvance: 0 },
+  smart: { type: 'smart', smartThreshold: 80, releaseInAdvance: 15 },
+};
+
 export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
   const [slotSources, setSlotSources] = useState<SlotSource[]>(SLOT_SOURCES);
   const [searchText, setSearchText] = useState('');
   const [filterDevice, setFilterDevice] = useState<string>('全部');
   const [filterDate, setFilterDate] = useState<string>('2026-05-02');
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<'view' | 'edit' | 'create'>('view');
+  const [modalType, setModalType] = useState<'view' | 'edit' | 'create' | 'tempAdd' | 'lockSlot'>('view');
   const [selectedSource, setSelectedSource] = useState<SlotSource | null>(null);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [activeView, setActiveView] = useState<'list' | 'pool'>('list');
+
+  // 临时加号表单
+  const [tempSlotForm, setTempSlotForm] = useState({
+    slotIndex: 0,
+    reason: '',
+    extraCount: 1,
+  });
+
+  // 锁定号源表单
+  const [lockSlotForm, setLockSlotForm] = useState({
+    slotIndex: 0,
+    reason: '',
+    duration: 30, // 分钟
+  });
+
+  // 放号策略
+  const [releaseStrategies, setReleaseStrategies] = useState<SlotReleaseStrategy[]>([
+    { id: 'RS001', name: '默认每日08:00放号', policy: RELEASE_POLICY_PRESETS.daily0800, isActive: true, createdAt: '2026-05-01' },
+    { id: 'RS002', name: 'CT室智能放号', deviceId: 'DEV001', modality: 'CT', policy: RELEASE_POLICY_PRESETS.smart, isActive: false, createdAt: '2026-05-01' },
+  ]);
 
   // 筛选后的号源列表
   const filteredSources = useMemo(() => {
@@ -61,6 +93,8 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
       totalSlots,
       totalAvailable,
       utilization: totalSlots > 0 ? Math.round(((totalSlots - totalAvailable) / totalSlots) * 100) : 0,
+      lockedCount: todaySources.reduce((acc, s) => acc + (s.lockedSlots?.length || 0), 0),
+      tempAddedCount: todaySources.reduce((acc, s) => acc + (s.tempSlots?.reduce((a, t) => a + t.extraCount, 0) || 0), 0),
     };
   }, [slotSources, filterDate]);
 
@@ -97,6 +131,129 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
     setShowModal(true);
   };
 
+  // 打开临时加号
+  const handleTempAdd = (source: SlotSource, slotIndex: number) => {
+    setSelectedSource(source);
+    setTempSlotForm({ slotIndex, reason: '', extraCount: 1 });
+    setModalType('tempAdd');
+    setShowModal(true);
+  };
+
+  // 打开锁定号源
+  const handleLockSlot = (source: SlotSource, slotIndex: number) => {
+    setSelectedSource(source);
+    setLockSlotForm({ slotIndex, reason: '', duration: 30 });
+    setModalType('lockSlot');
+    setShowModal(true);
+  };
+
+  // 提交临时加号
+  const handleTempAddSubmit = () => {
+    if (!selectedSource) return;
+    const slot = selectedSource.slots[tempSlotForm.slotIndex];
+    if (!slot) return;
+
+    const newTempSlot: TempSlot = {
+      id: `TEMP${Date.now()}`,
+      slotIndex: tempSlotForm.slotIndex,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      addedBy: currentRole,
+      addedAt: new Date().toISOString(),
+      reason: tempSlotForm.reason,
+      extraCount: tempSlotForm.extraCount,
+    };
+
+    setSlotSources(prev => prev.map(s => {
+      if (s.id === selectedSource.id) {
+        return {
+          ...s,
+          slots: s.slots.map((sl, idx) =>
+            idx === tempSlotForm.slotIndex
+              ? { ...sl, available: sl.available + tempSlotForm.extraCount, total: sl.total + tempSlotForm.extraCount }
+              : sl
+          ),
+          tempSlots: [...(s.tempSlots || []), newTempSlot],
+        };
+      }
+      return s;
+    }));
+
+    setShowModal(false);
+  };
+
+  // 提交锁定号源
+  const handleLockSubmit = () => {
+    if (!selectedSource) return;
+    const slot = selectedSource.slots[lockSlotForm.slotIndex];
+    if (!slot) return;
+
+    const expiresAt = new Date(Date.now() + lockSlotForm.duration * 60000).toISOString();
+
+    const newLockedSlot: LockedSlot = {
+      id: `LOCK${Date.now()}`,
+      slotIndex: lockSlotForm.slotIndex,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      lockedBy: currentRole,
+      lockedAt: new Date().toISOString(),
+      reason: lockSlotForm.reason,
+      expiresAt,
+    };
+
+    setSlotSources(prev => prev.map(s => {
+      if (s.id === selectedSource.id) {
+        return {
+          ...s,
+          slots: s.slots.map((sl, idx) =>
+            idx === lockSlotForm.slotIndex
+              ? { ...sl, available: Math.max(0, sl.available - 1) }
+              : sl
+          ),
+          lockedSlots: [...(s.lockedSlots || []), newLockedSlot],
+        };
+      }
+      return s;
+    }));
+
+    setShowModal(false);
+  };
+
+  // 解锁号源
+  const handleUnlock = (sourceId: string, lockId: string) => {
+    setSlotSources(prev => prev.map(s => {
+      if (s.id === sourceId) {
+        const lock = s.lockedSlots?.find(l => l.id === lockId);
+        const slotIndex = lock?.slotIndex ?? -1;
+        return {
+          ...s,
+          slots: s.slots.map((sl, idx) =>
+            idx === slotIndex ? { ...sl, available: sl.available + 1 } : sl
+          ),
+          lockedSlots: s.lockedSlots?.filter(l => l.id !== lockId),
+        };
+      }
+      return s;
+    }));
+  };
+
+  // 手动放号
+  const handleManualRelease = (sourceId: string) => {
+    if (!confirm('确定要手动放号吗？')) return;
+    setSlotSources(prev => prev.map(s => {
+      if (s.id === sourceId) {
+        return {
+          ...s,
+          slots: s.slots.map(slot => ({
+            ...slot,
+            available: slot.total,
+          })),
+        };
+      }
+      return s;
+    }));
+  };
+
   // 切换自动放号
   const handleToggleAutoRelease = (sourceId: string) => {
     setSlotSources(prev => prev.map(s =>
@@ -118,6 +275,8 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
     date: filterDate,
     autoRelease: true,
     releaseRule: '每日08:00自动放号',
+    releasePolicyType: 'daily' as 'daily' | 'weekly' | 'manual' | 'smart',
+    releaseTime: '08:00',
   });
 
   // 处理设备选择
@@ -134,14 +293,10 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
   const generateTimeSlots = () => {
     const slots: TimeSlot[] = [];
     const times = [
-      { start: '08:00', end: '09:00' },
-      { start: '09:00', end: '10:00' },
-      { start: '10:00', end: '11:00' },
-      { start: '11:00', end: '12:00' },
-      { start: '14:00', end: '15:00' },
-      { start: '15:00', end: '16:00' },
-      { start: '16:00', end: '17:00' },
-      { start: '17:00', end: '18:00' },
+      { start: '08:00', end: '09:00' }, { start: '09:00', end: '10:00' },
+      { start: '10:00', end: '11:00' }, { start: '11:00', end: '12:00' },
+      { start: '14:00', end: '15:00' }, { start: '15:00', end: '16:00' },
+      { start: '16:00', end: '17:00' }, { start: '17:00', end: '18:00' },
     ];
     times.forEach(t => {
       slots.push({
@@ -164,6 +319,8 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
       return;
     }
 
+    const policy = RELEASE_POLICY_PRESETS[newSource.releasePolicyType] || RELEASE_POLICY_PRESETS.daily0800;
+
     const source: SlotSource = {
       id: `SS${String(slotSources.length + 1).padStart(3, '0')}`,
       deviceId: newSource.deviceId,
@@ -174,6 +331,7 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
       slots: generateTimeSlots(),
       autoRelease: newSource.autoRelease,
       releaseRule: newSource.releaseRule,
+      releasePolicy: policy,
     };
 
     setSlotSources(prev => [...prev, source]);
@@ -187,30 +345,50 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
     return { color: STATUS_COLORS.available, text: '充足' };
   };
 
+  // 检查号源是否已锁定
+  const isSlotLocked = (source: SlotSource, slotIndex: number) => {
+    return source.lockedSlots?.some(ls => ls.slotIndex === slotIndex && new Date(ls.expiresAt) > new Date());
+  };
+
   return (
     <div style={{ padding: '20px' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: '#1e40af', margin: 0 }}>号源管理</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0 0' }}>管理系统设备号源配置与放号规则</p>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0 0' }}>号源池视图 · 放号策略 · 临时加号 · 号源锁定</p>
         </div>
-        {currentRole === '管理员' && (
-          <button
-            onClick={handleCreate}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '10px 16px', background: '#1e40af', color: '#fff',
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            <Plus size={16} /> 配置号源
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          {currentRole === '管理员' && (
+            <>
+              <button
+                onClick={() => setActiveView(activeView === 'list' ? 'pool' : 'list')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 16px', background: '#f3f4f6', color: '#374151',
+                  border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                <Grid3X3 size={16} />
+                {activeView === 'list' ? '号源池视图' : '列表视图'}
+              </button>
+              <button
+                onClick={handleCreate}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 16px', background: '#1e40af', color: '#fff',
+                  border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                <Plus size={16} /> 配置号源
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 统计卡片 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 20 }}>
         <div style={{
           background: '#fff', borderRadius: 10, padding: '14px 16px',
           border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
@@ -264,6 +442,34 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
             <div>
               <div style={{ fontSize: 11, color: '#6b7280' }}>使用率</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#6b7280' }}>{statistics.utilization}%</div>
+            </div>
+          </div>
+        </div>
+        <div style={{
+          background: '#fff', borderRadius: 10, padding: '14px 16px',
+          border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Lock size={20} color='#ef4444' />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>已锁定</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>{statistics.lockedCount}</div>
+            </div>
+          </div>
+        </div>
+        <div style={{
+          background: '#fff', borderRadius: 10, padding: '14px 16px',
+          border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={20} color='#1e40af' />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>临时加号</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{statistics.tempAddedCount}</div>
             </div>
           </div>
         </div>
@@ -398,11 +604,15 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {source.slots.slice(0, 4).map((slot, i) => {
                         const slotStatus = getSlotStatus(slot.total, slot.available);
+                        const locked = isSlotLocked(source, i);
                         return (
                           <div key={i} style={{
                             padding: '2px 8px', borderRadius: 4, fontSize: 11,
-                            background: slotStatus.color + '20', color: slotStatus.color,
+                            background: locked ? '#f3f4f6' : slotStatus.color + '20',
+                            color: locked ? '#6b7280' : slotStatus.color,
+                            display: 'flex', alignItems: 'center', gap: 2,
                           }}>
+                            {locked && <Lock size={10} />}
                             {slot.startTime}-{slot.endTime}
                           </div>
                         );
@@ -435,6 +645,13 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ fontSize: 12, color: '#6b7280' }}>{source.releaseRule}</div>
+                    {source.releasePolicy && (
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                        {source.releasePolicy.type === 'smart' && '智能放号'}
+                        {source.releasePolicy.type === 'daily' && `每日${source.releasePolicy.dailyTime}`}
+                        {source.releasePolicy.type === 'manual' && '手动放号'}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <button
@@ -463,6 +680,13 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                       </button>
                       {currentRole === '管理员' && (
                         <>
+                          <button
+                            onClick={() => handleManualRelease(source.id)}
+                            title="手动放号"
+                            style={{ padding: 6, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#10b981' }}
+                          >
+                            <Zap size={16} />
+                          </button>
                           <button
                             onClick={() => handleEdit(source)}
                             title="编辑"
@@ -503,8 +727,8 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
           zIndex: 1000,
         }}>
           <div style={{
-            background: '#fff', borderRadius: 12, width: '90%', maxWidth: 700, maxHeight: '90vh',
-            overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            background: '#fff', borderRadius: 12, width: '90%', maxWidth: modalType === 'view' ? 800 : 600,
+            maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
           }}>
             {/* 模态框头部 */}
             <div style={{
@@ -512,7 +736,11 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>
-                {modalType === 'view' ? '号源详情' : modalType === 'edit' ? '编辑号源' : '配置号源'}
+                {modalType === 'view' && '号源详情'}
+                {modalType === 'edit' && '编辑号源'}
+                {modalType === 'create' && '配置号源'}
+                {modalType === 'tempAdd' && '临时加号'}
+                {modalType === 'lockSlot' && '锁定号源'}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -524,10 +752,9 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
 
             {/* 模态框内容 */}
             <div style={{ padding: 20 }}>
-              {modalType === 'create' ? (
+              {modalType === 'create' && (
                 // 新建号源表单
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  {/* 设备选择 */}
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>选择设备</label>
                     <select
@@ -546,7 +773,6 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     </select>
                   </div>
 
-                  {/* 检查项目选择 */}
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>检查项目</label>
                     <select
@@ -559,12 +785,10 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                         .filter(e => newSource.deviceId === '' || e.applicableDeviceIds.includes(newSource.deviceId))
                         .map(item => (
                           <option key={item.id} value={item.id}>{item.name} ({item.modality})</option>
-                        ))
-                      }
+                        ))}
                     </select>
                   </div>
 
-                  {/* 日期 */}
                   <div>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>号源日期</label>
                     <input
@@ -575,7 +799,32 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     />
                   </div>
 
-                  {/* 自动放号 */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>放号策略</label>
+                    <select
+                      value={newSource.releasePolicyType}
+                      onChange={e => setNewSource(prev => ({ ...prev, releasePolicyType: e.target.value as any }))}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                    >
+                      <option value="daily">每日自动放号</option>
+                      <option value="weekly">每周自动放号</option>
+                      <option value="smart">智能放号</option>
+                      <option value="manual">手动放号</option>
+                    </select>
+                  </div>
+
+                  {newSource.releasePolicyType === 'daily' && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>放号时间</label>
+                      <input
+                        type="time"
+                        value={newSource.releaseTime}
+                        onChange={e => setNewSource(prev => ({ ...prev, releaseTime: e.target.value }))}
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>自动放号</label>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -606,23 +855,6 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     </div>
                   </div>
 
-                  {/* 放号规则 */}
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>放号规则</label>
-                    <select
-                      value={newSource.releaseRule}
-                      onChange={e => setNewSource(prev => ({ ...prev, releaseRule: e.target.value }))}
-                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
-                    >
-                      <option value="每日08:00自动放号">每日08:00自动放号</option>
-                      <option value="每日08:30自动放号">每日08:30自动放号</option>
-                      <option value="每日09:00自动放号">每日09:00自动放号</option>
-                      <option value="每周一08:00放号">每周一08:00放号</option>
-                      <option value="手动放号">手动放号</option>
-                    </select>
-                  </div>
-
-                  {/* 提交按钮 */}
                   <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
                     <button
                       onClick={() => setShowModal(false)}
@@ -644,7 +876,131 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     </button>
                   </div>
                 </div>
-              ) : selectedSource ? (
+              )}
+
+              {modalType === 'tempAdd' && selectedSource && (
+                // 临时加号表单
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>选择时段</label>
+                    <select
+                      value={tempSlotForm.slotIndex}
+                      onChange={e => setTempSlotForm(prev => ({ ...prev, slotIndex: Number(e.target.value) }))}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                    >
+                      {selectedSource.slots.map((slot, idx) => (
+                        <option key={idx} value={idx}>
+                          {slot.startTime} - {slot.endTime} (当前可用: {slot.available})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>加号数量</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={tempSlotForm.extraCount}
+                      onChange={e => setTempSlotForm(prev => ({ ...prev, extraCount: Number(e.target.value) }))}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>加号原因</label>
+                    <textarea
+                      value={tempSlotForm.reason}
+                      onChange={e => setTempSlotForm(prev => ({ ...prev, reason: e.target.value }))}
+                      placeholder="请输入临时加号原因..."
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, minHeight: 80, resize: 'vertical' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
+                    <button
+                      onClick={() => setShowModal(false)}
+                      style={{
+                        padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb',
+                        background: '#fff', color: '#6b7280', fontSize: 13, cursor: 'pointer',
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleTempAddSubmit}
+                      style={{
+                        padding: '10px 20px', borderRadius: 8, border: 'none',
+                        background: '#10b981', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      确认加号
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {modalType === 'lockSlot' && selectedSource && (
+                // 锁定号源表单
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>选择时段</label>
+                    <select
+                      value={lockSlotForm.slotIndex}
+                      onChange={e => setLockSlotForm(prev => ({ ...prev, slotIndex: Number(e.target.value) }))}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                    >
+                      {selectedSource.slots.map((slot, idx) => (
+                        <option key={idx} value={idx}>
+                          {slot.startTime} - {slot.endTime} (当前可用: {slot.available})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>锁定时长</label>
+                    <select
+                      value={lockSlotForm.duration}
+                      onChange={e => setLockSlotForm(prev => ({ ...prev, duration: Number(e.target.value) }))}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13 }}
+                    >
+                      <option value={15}>15分钟</option>
+                      <option value={30}>30分钟</option>
+                      <option value={60}>1小时</option>
+                      <option value={120}>2小时</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>锁定原因</label>
+                    <textarea
+                      value={lockSlotForm.reason}
+                      onChange={e => setLockSlotForm(prev => ({ ...prev, reason: e.target.value }))}
+                      placeholder="请输入锁定原因..."
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, minHeight: 80, resize: 'vertical' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
+                    <button
+                      onClick={() => setShowModal(false)}
+                      style={{
+                        padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb',
+                        background: '#fff', color: '#6b7280', fontSize: 13, cursor: 'pointer',
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleLockSubmit}
+                      style={{
+                        padding: '10px 20px', borderRadius: 8, border: 'none',
+                        background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      确认锁定
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {modalType === 'view' && selectedSource && (
                 // 查看/编辑详情
                 <div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
@@ -677,6 +1033,17 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                         {selectedSource.autoRelease ? '已启用' : '已禁用'}
                       </div>
                     </div>
+                    {selectedSource.releasePolicy && (
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>放号策略</div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>
+                          {selectedSource.releasePolicy.type === 'daily' && `每日 ${selectedSource.releasePolicy.dailyTime} 放号`}
+                          {selectedSource.releasePolicy.type === 'weekly' && `每周第${selectedSource.releasePolicy.weeklyDay}天放号`}
+                          {selectedSource.releasePolicy.type === 'smart' && `智能放号 (阈值${selectedSource.releasePolicy.smartThreshold}%)`}
+                          {selectedSource.releasePolicy.type === 'manual' && '手动放号'}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 时段详情 */}
@@ -685,31 +1052,99 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                       {selectedSource.slots.map((slot, idx) => {
                         const status = getSlotStatus(slot.total, slot.available);
+                        const locked = isSlotLocked(selectedSource, idx);
+                        const tempSlot = selectedSource.tempSlots?.find(t => t.slotIndex === idx);
                         return (
                           <div key={idx} style={{
                             padding: 12, borderRadius: 8, border: '1px solid #e5e7eb',
-                            background: '#f9fafb',
+                            background: locked ? '#f3f4f6' : '#f9fafb',
                           }}>
                             <div style={{ fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
                               {slot.startTime} - {slot.endTime}
+                              {locked && <Lock size={12} style={{ marginLeft: 4, color: '#9ca3af' }} />}
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div>
-                                <span style={{ fontSize: 18, fontWeight: 700, color: status.color }}>{slot.available}</span>
+                                <span style={{ fontSize: 18, fontWeight: 700, color: locked ? '#9ca3af' : status.color }}>{slot.available}</span>
                                 <span style={{ fontSize: 12, color: '#9ca3af' }}> / {slot.total}</span>
                               </div>
                               <span style={{
                                 fontSize: 10, padding: '2px 6px', borderRadius: 4,
-                                background: status.color + '20', color: status.color,
+                                background: locked ? '#e5e7eb' : status.color + '20',
+                                color: locked ? '#6b7280' : status.color,
                               }}>
-                                {status.text}
+                                {locked ? '已锁定' : status.text}
                               </span>
                             </div>
+                            {tempSlot && (
+                              <div style={{ fontSize: 10, color: '#10b981', marginTop: 4 }}>
+                                +{tempSlot.extraCount} 临时号
+                              </div>
+                            )}
+                            {currentRole === '管理员' && !locked && (
+                              <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                                <button
+                                  onClick={() => handleTempAdd(selectedSource, idx)}
+                                  style={{
+                                    flex: 1, padding: '4px 8px', borderRadius: 4,
+                                    border: '1px solid #10b981', background: '#ecfdf5',
+                                    color: '#059669', fontSize: 11, cursor: 'pointer',
+                                  }}
+                                >
+                                  <Plus size={10} style={{ marginRight: 2 }} />加号
+                                </button>
+                                <button
+                                  onClick={() => handleLockSlot(selectedSource, idx)}
+                                  style={{
+                                    flex: 1, padding: '4px 8px', borderRadius: 4,
+                                    border: '1px solid #ef4444', background: '#fef2f2',
+                                    color: '#dc2626', fontSize: 11, cursor: 'pointer',
+                                  }}
+                                >
+                                  <Lock size={10} style={{ marginRight: 2 }} />锁定
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   </div>
+
+                  {/* 锁定列表 */}
+                  {selectedSource.lockedSlots && selectedSource.lockedSlots.length > 0 && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>已锁定号源</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {selectedSource.lockedSlots.map(lock => (
+                          <div key={lock.id} style={{
+                            padding: 10, borderRadius: 6, border: '1px solid #fee2e2',
+                            background: '#fef2f2', display: 'flex', alignItems: 'center', gap: 12,
+                          }}>
+                            <Lock size={14} color='#ef4444' />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 500, color: '#991b1b' }}>
+                                {lock.startTime} - {lock.endTime}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#6b7280' }}>
+                                锁定人: {lock.lockedBy} | 原因: {lock.reason} | 有效期至: {new Date(lock.expiresAt).toLocaleTimeString()}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleUnlock(selectedSource.id, lock.id)}
+                              style={{
+                                padding: '4px 10px', borderRadius: 4,
+                                border: 'none', background: '#10b981',
+                                color: '#fff', fontSize: 11, cursor: 'pointer',
+                              }}
+                            >
+                              <Unlock size={10} style={{ marginRight: 2 }} />解锁
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* 关闭按钮 */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
@@ -724,7 +1159,7 @@ export default function SlotSourcePage({ currentRole }: SlotSourcePageProps) {
                     </button>
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </div>

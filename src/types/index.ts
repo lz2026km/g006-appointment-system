@@ -110,6 +110,53 @@ export interface SlotSource {
   slots: TimeSlot[];
   autoRelease: boolean;
   releaseRule: string; // '每日08:00自动放号'
+  // 临时加号
+  tempSlots?: TempSlot[];
+  // 号源锁定
+  lockedSlots?: LockedSlot[];
+  // 放号策略
+  releasePolicy?: ReleasePolicy;
+}
+
+export interface TempSlot {
+  id: string;
+  slotIndex: number;
+  startTime: string;
+  endTime: string;
+  addedBy: string;
+  addedAt: string;
+  reason: string;
+  extraCount: number;
+}
+
+export interface LockedSlot {
+  id: string;
+  slotIndex: number;
+  startTime: string;
+  endTime: string;
+  lockedBy: string;
+  lockedAt: string;
+  reason: string;
+  expiresAt: string;
+}
+
+export interface ReleasePolicy {
+  type: 'daily' | 'weekly' | 'manual' | 'smart';
+  dailyTime?: string;
+  weeklyDay?: number; // 0-6, 0=Sunday
+  smartThreshold?: number; // utilization threshold for smart release
+  preReleaseDays?: number;
+  releaseInAdvance: number; // minutes
+}
+
+export interface SlotReleaseStrategy {
+  id: string;
+  name: string;
+  deviceId?: string;
+  modality?: string;
+  policy: ReleasePolicy;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface Schedule {
@@ -164,6 +211,42 @@ export interface Notification {
   patientName?: string;
   appointmentDate?: string;
   isRead: boolean;
+  createdAt: string;
+}
+
+// 通知模板类型
+export type NotificationTemplateType = '短信' | '微信' | 'APP推送';
+
+// 通知模板
+export interface NotificationTemplate {
+  id: string;
+  name: string;
+  type: NotificationTemplateType;
+  title: string;
+  content: string;
+  variables: string[]; // 可用变量列表，如 ['patientName', 'appointmentDate', 'examItemName']
+  status: '启用' | '停用';
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 发送记录状态
+export type SendRecordStatus = '待发送' | '发送中' | '已发送' | '发送失败' | '已送达' | '已阅读';
+
+// 发送记录
+export interface SendRecord {
+  id: string;
+  templateId: string;
+  templateName: string;
+  templateType: NotificationTemplateType;
+  recipientName: string;
+  recipientPhone?: string;
+  content: string;
+  status: SendRecordStatus;
+  sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
+  errorMessage?: string;
   createdAt: string;
 }
 

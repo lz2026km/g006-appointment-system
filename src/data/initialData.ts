@@ -3,7 +3,8 @@
 
 import type {
   Appointment, Patient, ExamItem, Device, SlotSource,
-  Schedule, Department, CheckInRecord, Notification, Statistics
+  Schedule, Department, CheckInRecord, Notification, Statistics,
+  NotificationTemplate, SendRecord
 } from '../types';
 
 // ==================== 科室数据 ====================
@@ -113,6 +114,48 @@ export const CHECKIN_RECORDS: CheckInRecord[] = [
   { id: 'CI003', appointmentId: 'APT002', patientName: '王秀英', examItemName: '胸部CT平扫', deviceName: 'CT-01', checkInTime: '08:50', queueNumber: 2, estimatedTime: '09:00', status: '候检' },
 ];
 
+// ==================== 通知模板数据 ====================
+export const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
+  // 短信模板 (6个)
+  { id: 'T001', name: '预约成功短信', type: '短信', title: '医技预约成功', content: '尊敬的患者您好，您的${patientName}的${examItemName}检查已预约成功，请于${appointmentDate} ${appointmentTime}携带有效证件至${location}进行检查，如有疑问请致电${hospitalPhone}。', variables: ['patientName', 'examItemName', 'appointmentDate', 'appointmentTime', 'location', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'T002', name: '检查提醒短信', type: '短信', title: '检查前一天提醒', content: '您的${examItemName}检查将于明天${appointmentTime}进行，请提前30分钟至${location}签到，如需改期请致电${hospitalPhone}。', variables: ['examItemName', 'appointmentTime', 'location', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'T003', name: '报告完成短信', type: '短信', title: '报告已完成', content: '您的${examItemName}检查报告已完成，请于工作日8:00-17:00至${reportLocation}自助机打印，或通过微信在线查看。', variables: ['examItemName', 'reportLocation'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'T004', name: '改签通知短信', type: '短信', title: '预约改签提醒', content: '您的${examItemName}检查已改期，由原${oldDate}改至${appointmentDate} ${appointmentTime}，如有疑问请致电${hospitalPhone}。', variables: ['examItemName', 'oldDate', 'appointmentDate', 'appointmentTime', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'T005', name: '取消预约短信', type: '短信', title: '预约已取消', content: '您的${examItemName}检查（${appointmentDate} ${appointmentTime}）已取消，如需重新预约请通过微信或拨打${hospitalPhone}。', variables: ['examItemName', 'appointmentDate', 'appointmentTime', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'T006', name: '迟到提醒短信', type: '短信', title: '签到迟到提醒', content: '您的${examItemName}检查已过预约时间${appointmentTime}，请尽快至${location}签到，当前排队号${queueNumber}，如需帮助请致电${hospitalPhone}。', variables: ['examItemName', 'appointmentTime', 'location', 'queueNumber', 'hospitalPhone'], status: '停用', createdAt: '2026-04-10 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+
+  // 微信模板 (6个)
+  { id: 'W001', name: '预约成功微信', type: '微信', title: '预约成功通知', content: '【医技预约】\n尊敬的患者，您的检查预约已成功！\n\n患者姓名：${patientName}\n检查项目：${examItemName}\n预约时间：${appointmentDate} ${appointmentTime}\n检查地点：${location}\n\n请提前30分钟携带有效证件至指定地点签到检查。', variables: ['patientName', 'examItemName', 'appointmentDate', 'appointmentTime', 'location'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'W002', name: '检查提醒微信', type: '微信', title: '明日检查提醒', content: '【检查提醒】\n您的${examItemName}检查将于明天进行！\n\n预约时间：${appointmentTime}\n检查地点：${location}\n排队号：${queueNumber}\n\n请提前30分钟签到，如有特殊情况无法按时检查，请提前联系。', variables: ['examItemName', 'appointmentTime', 'location', 'queueNumber'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'W003', name: '报告完成微信', type: '微信', title: '报告完成通知', content: '【报告完成】\n您的${examItemName}检查报告已完成！\n\n报告时间：${reportTime}\n报告医生：${doctorName}\n\n您可以：\n1. 前往${reportLocation}自助打印\n2. 点击详情在线查看电子报告', variables: ['examItemName', 'reportTime', 'doctorName', 'reportLocation'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'W004', name: '改签通知微信', type: '微信', title: '预约变更通知', content: '【预约变更】\n您的检查预约已有变更！\n\n检查项目：${examItemName}\n原预约时间：${oldDate} ${oldTime}\n改期时间：${appointmentDate} ${appointmentTime}\n\n如有疑问请致电${hospitalPhone}', variables: ['examItemName', 'oldDate', 'oldTime', 'appointmentDate', 'appointmentTime', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'W005', name: '取消通知微信', type: '微信', title: '预约取消通知', content: '【预约取消】\n您的${examItemName}检查已取消！\n\n原预约时间：${appointmentDate} ${appointmentTime}\n取消原因：${cancelReason}\n\n如需重新预约，请通过公众号菜单或致电${hospitalPhone}。', variables: ['examItemName', 'appointmentDate', 'appointmentTime', 'cancelReason', 'hospitalPhone'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'W006', name: '签到排队微信', type: '微信', title: '签到排队通知', content: '【签到成功】\n您已成功签到！\n\n检查项目：${examItemName}\n当前排队号：${queueNumber}\n预计等候时间：${waitTime}分钟\n\n请在候检区等待叫号，过号需重新排队。', variables: ['examItemName', 'queueNumber', 'waitTime'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+
+  // APP推送模板 (5个)
+  { id: 'A001', name: '预约成功推送', type: 'APP推送', title: '预约成功', content: '您的${examItemName}检查已预约成功，请于${appointmentDate} ${appointmentTime}至${location}进行检查。', variables: ['examItemName', 'appointmentDate', 'appointmentTime', 'location'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'A002', name: '检查提醒推送', type: 'APP推送', title: '检查提醒：明天${examItemName}', content: '您的${examItemName}检查将于明天${appointmentTime}进行，请提前30分钟签到，地点：${location}。', variables: ['examItemName', 'appointmentTime', 'location'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'A003', name: '报告完成推送', type: 'APP推送', title: '报告已完成，点击查看', content: '您的${examItemName}检查报告已完成，可点击查看详细报告内容。', variables: ['examItemName'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'A004', name: '叫号通知推送', type: 'APP推送', title: '轮到您检查了！', content: '患者${patientName}，您的${examItemName}检查现在开始，请携带申请单至${location}进行检查。', variables: ['patientName', 'examItemName', 'location'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+  { id: 'A005', name: '危急值推送', type: 'APP推送', title: '⚠️ 危急值通知', content: '患者${patientName}的${examItemName}检查发现危急值，请医生立即查看：${criticalValue}。', variables: ['patientName', 'examItemName', 'criticalValue'], status: '启用', createdAt: '2026-04-01 10:00:00', updatedAt: '2026-04-15 14:30:00' },
+];
+
+// ==================== 发送记录数据 ====================
+export const SEND_RECORDS: SendRecord[] = [
+  { id: 'SR001', templateId: 'T001', templateName: '预约成功短信', templateType: '短信', recipientName: '李建国', recipientPhone: '138****5601', content: '尊敬的患者您好，您的李建国的头颅CT平扫检查已预约成功，请于2026-05-02 08:00-09:00携带有效证件至医技楼1层CT-1室进行检查。', status: '已送达', sentAt: '2026-05-01 09:05:00', deliveredAt: '2026-05-01 09:05:12', createdAt: '2026-05-01 09:00:00' },
+  { id: 'SR002', templateId: 'W001', templateName: '预约成功微信', templateType: '微信', recipientName: '王秀英', recipientPhone: '139****5602', content: '【医技预约】\n尊敬的患者，您的检查预约已成功！\n\n患者姓名：王秀英\n检查项目：胸部CT平扫\n预约时间：2026-05-02 09:00-10:00\n检查地点：医技楼1层CT-1室\n\n请提前30分钟携带有效证件至指定地点签到检查。', status: '已阅读', sentAt: '2026-05-01 10:35:00', deliveredAt: '2026-05-01 10:35:08', readAt: '2026-05-01 11:20:00', createdAt: '2026-05-01 10:30:00' },
+  { id: 'SR003', templateId: 'A001', templateName: '预约成功推送', templateType: 'APP推送', recipientName: '张伟', content: '您的冠脉CTA检查已预约成功，请于2026-05-02 10:00-11:00至医技楼1层CT-1室进行检查。', status: '已发送', sentAt: '2026-05-01 14:05:00', createdAt: '2026-05-01 14:00:00' },
+  { id: 'SR004', templateId: 'T002', templateName: '检查提醒短信', templateType: '短信', recipientName: '刘芳', recipientPhone: '136****5604', content: '您的腹部肝胆脾胰超声检查将于明天09:00进行，请提前30分钟至医技楼2层超声-1室签到。', status: '已送达', sentAt: '2026-05-01 20:00:00', deliveredAt: '2026-05-01 20:00:05', createdAt: '2026-05-01 20:00:00' },
+  { id: 'SR005', templateId: 'W002', templateName: '检查提醒微信', templateType: '微信', recipientName: '陈强', recipientPhone: '135****5605', content: '【检查提醒】\n您的常规十二导联心电图检查将于明天进行！\n\n预约时间：08:30-09:00\n检查地点：门诊楼2层心电图室\n排队号：001\n\n请提前30分钟签到。', status: '待发送', createdAt: '2026-05-01 20:00:00' },
+  { id: 'SR006', templateId: 'T003', templateName: '报告完成短信', templateType: '短信', recipientName: '刘芳', recipientPhone: '136****5604', content: '您的腹部肝胆脾胰超声检查报告已完成，请于工作日8:00-17:00至医技楼2层自助机打印。', status: '已送达', sentAt: '2026-05-02 09:35:00', deliveredAt: '2026-05-02 09:35:03', readAt: '2026-05-02 10:15:00', createdAt: '2026-05-02 09:30:00' },
+  { id: 'SR007', templateId: 'W003', templateName: '报告完成微信', templateType: '微信', recipientName: '孙磊', recipientPhone: '133****5607', content: '【报告完成】\n您的头颅MRI平扫检查报告已完成！\n\n报告时间：2026-05-02 11:30\n报告医生：李娜\n\n您可以前往放射科自助打印或点击详情查看电子报告。', status: '发送失败', sentAt: '2026-05-02 11:35:00', errorMessage: '用户已取消关注公众号', createdAt: '2026-05-02 11:30:00' },
+  { id: 'SR008', templateId: 'A004', templateName: '叫号通知推送', templateType: 'APP推送', recipientName: '李建国', content: '患者李建国，您的头颅CT平扫检查现在开始，请携带申请单至医技楼1层CT-1室进行检查。', status: '已送达', sentAt: '2026-05-02 07:58:00', deliveredAt: '2026-05-02 07:58:02', createdAt: '2026-05-02 07:55:00' },
+  { id: 'SR009', templateId: 'A005', templateName: '危急值推送', templateType: 'APP推送', recipientName: '张伟(医生)', content: '患者张伟的CT检查发现危急值，请医生立即查看：肺部大面积阴影。', status: '已送达', sentAt: '2026-05-02 14:20:00', deliveredAt: '2026-05-02 14:20:01', createdAt: '2026-05-02 14:20:00' },
+  { id: 'SR010', templateId: 'T004', templateName: '改签通知短信', templateType: '短信', recipientName: '赵敏', recipientPhone: '134****5606', content: '您的电子胃镜检查已由2026-05-03 09:00改至2026-05-02 14:00，如有疑问请致电汉东省人民医院。', status: '已送达', sentAt: '2026-05-02 08:35:00', deliveredAt: '2026-05-02 08:35:06', createdAt: '2026-05-02 08:30:00' },
+  { id: 'SR011', templateId: 'W004', templateName: '改签通知微信', templateType: '微信', recipientName: '郑静', recipientPhone: '130****5610', content: '【预约变更】\n您的腹部CT平扫检查已有变更！\n\n原预约时间：2026-05-03 10:00\n改期时间：2026-05-02 14:00\n\n如有疑问请致电。', status: '发送中', sentAt: '2026-05-02 08:40:00', createdAt: '2026-05-02 08:35:00' },
+  { id: 'SR012', templateId: 'T005', templateName: '取消预约短信', templateType: '短信', recipientName: '李建国', recipientPhone: '138****5601', content: '您的心脏彩超检查（2026-05-02 09:00）已取消，如需重新预约请通过微信或拨打医院电话。', status: '已送达', sentAt: '2026-05-02 08:05:00', deliveredAt: '2026-05-02 08:05:03', createdAt: '2026-05-02 08:00:00' },
+];
+
 // ==================== 通知数据 ====================
 export const NOTIFICATIONS: Notification[] = [
   { id: 'N001', type: '预约成功', title: '预约成功', content: '您的头颅CT平扫检查已预约成功，请于2026-05-02 08:00-09:00至医技楼1层CT-1室进行检查。', patientName: '李建国', appointmentDate: '2026-05-02', isRead: true, createdAt: '2026-05-01 09:00:00' },
@@ -177,16 +220,20 @@ export const MENU_ITEMS = [
   { path: '/exam-items', label: '检查项目管理', icon: 'Stethoscope', roles: ['管理员'] },
   { path: '/devices', label: '设备管理', icon: 'Monitor', roles: ['管理员', '技师'] },
   { path: '/slot-source', label: '号源管理', icon: 'Grid3X3', roles: ['管理员', '前台'] },
+  { path: '/slot-pool', label: '实时号源池', icon: 'Grid3X3', roles: ['管理员'] },
   { path: '/schedule', label: '排班管理', icon: 'Clock', roles: ['管理员', '技师'] },
   { path: '/departments', label: '科室管理', icon: 'Building2', roles: ['管理员'] },
   { path: '/checkin', label: '签到管理', icon: 'ClipboardCheck', roles: ['管理员', '护士', '前台'] },
   { path: '/queue-call', label: '等待叫号', icon: 'Volume2', roles: ['管理员', '技师', '护士'] },
   { path: '/reports', label: '报告管理', icon: 'FileText', roles: ['管理员', '医生'] },
   { path: '/statistics', label: '统计分析', icon: 'BarChart3', roles: ['管理员'] },
+  { path: '/quality-control', label: '质控统计', icon: 'ShieldCheck', roles: ['管理员'] },
   { path: '/notifications', label: '通知管理', icon: 'Bell', roles: ['管理员', '医生', '护士', '前台'] },
+  { path: '/notification-templates', label: '模板管理', icon: 'FileText', roles: ['管理员'] },
   { path: '/critical-value', label: '危急值', icon: 'AlertTriangle', roles: ['管理员', '医生'] },
   { path: '/materials', label: '物资管理', icon: 'Package', roles: ['管理员'] },
   { path: '/print', label: '打印管理', icon: 'Printer', roles: ['管理员', '前台'] },
+  { path: '/rules-config', label: '规则配置', icon: 'ShieldCheck', roles: ['管理员'] },
   { path: '/operation-log', label: '操作日志', icon: 'ScrollText', roles: ['管理员'] },
   { path: '/settings', label: '系统设置', icon: 'Settings', roles: ['管理员'] },
 ];

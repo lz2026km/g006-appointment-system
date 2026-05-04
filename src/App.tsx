@@ -6,7 +6,7 @@ import {
   LayoutDashboard, CalendarCheck, Users, Stethoscope, Monitor, Grid3X3,
   Clock, Building2, ClipboardCheck, Volume2, FileText, BarChart3,
   Bell, AlertTriangle, Package, Printer, ScrollText, Settings,
-  ChevronLeft, ChevronRight, LogOut, User
+  ChevronLeft, ChevronRight, User
 } from 'lucide-react';
 import { MENU_ITEMS, SYSTEM_ROLES } from './data/initialData';
 import HomePage from './pages/HomePage';
@@ -14,6 +14,7 @@ import AppointmentPage from './pages/AppointmentPage';
 import PatientPage from './pages/PatientPage';
 import ExamItemPage from './pages/ExamItemPage';
 import DevicePage from './pages/DevicePage';
+import RealTimeSlotPool from './pages/RealTimeSlotPool';
 import SlotSourcePage from './pages/SlotSourcePage';
 import SchedulePage from './pages/SchedulePage';
 import DepartmentPage from './pages/DepartmentPage';
@@ -22,11 +23,14 @@ import QueueCallPage from './pages/QueueCallPage';
 import ReportPage from './pages/ReportPage';
 import StatisticsPage from './pages/StatisticsPage';
 import NotificationCenter from './pages/NotificationCenter';
+import NotificationTemplatePage from './pages/NotificationTemplatePage';
 import CriticalValuePage from './pages/CriticalValuePage';
 import MaterialsPage from './pages/MaterialsPage';
 import PrintManagementPage from './pages/PrintManagementPage';
 import OperationLogPage from './pages/OperationLogPage';
 import SettingsPage from './pages/SettingsPage';
+import RulesConfigPage from './pages/RulesConfigPage';
+import QualityControlPage from './pages/QualityControlPage';
 
 // 样式常量
 const PRIMARY = '#1e40af';
@@ -104,10 +108,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, currentRole }) =
               padding: collapsed ? '10px 12px' : '10px 16px',
               margin: '2px 8px',
               borderRadius: 8,
-              color: isActive ? '#fff' : 'rgba(255,255,255,0.7)',
-              background: isActive ? 'rgba(30,64,175,0.8)' : 'transparent',
+              borderLeft: isActive ? '4px solid #4ade80' : '4px solid transparent',
+              color: isActive ? '#ffffff' : 'rgba(255,255,255,0.8)',
+              background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
               textDecoration: 'none',
-              fontSize: 13,
+              fontSize: 16,
               fontWeight: isActive ? 600 : 400,
               transition: 'all 0.15s',
               whiteSpace: 'nowrap',
@@ -231,6 +236,7 @@ export default function App() {
             <Route path="/exam-items" element={<ExamItemPage currentRole={currentRole} />} />
             <Route path="/devices" element={<DevicePage currentRole={currentRole} />} />
             <Route path="/slot-source" element={<SlotSourcePage currentRole={currentRole} />} />
+            <Route path="/slot-pool" element={<RealTimeSlotPool currentRole={currentRole} />} />
             <Route path="/schedule" element={<SchedulePage currentRole={currentRole} />} />
             <Route path="/departments" element={<DepartmentPage currentRole={currentRole} />} />
             <Route path="/checkin" element={<CheckinPage currentRole={currentRole} />} />
@@ -238,11 +244,14 @@ export default function App() {
             <Route path="/reports" element={<ReportPage currentRole={currentRole} />} />
             <Route path="/statistics" element={<StatisticsPage currentRole={currentRole} />} />
             <Route path="/notifications" element={<NotificationCenter currentRole={currentRole} />} />
+            <Route path="/notification-templates" element={<NotificationTemplatePage currentRole={currentRole} />} />
             <Route path="/critical-value" element={<CriticalValuePage currentRole={currentRole} />} />
             <Route path="/materials" element={<MaterialsPage currentRole={currentRole} />} />
             <Route path="/print" element={<PrintManagementPage currentRole={currentRole} />} />
             <Route path="/operation-log" element={<OperationLogPage currentRole={currentRole} />} />
             <Route path="/settings" element={<SettingsPage currentRole={currentRole} />} />
+            <Route path="/rules-config" element={<RulesConfigPage currentRole={currentRole} />} />
+            <Route path="/quality-control" element={<QualityControlPage currentRole={currentRole} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

@@ -1,25 +1,51 @@
 // G006 全院医技检查预约系统 - 预约规则配置页面
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   Shield, AlertTriangle, Clock, BarChart3, Plus, Edit2, Trash2, 
   Search, Eye, X, Check, ChevronDown, ChevronUp, Play, RotateCcw,
-  ToggleLeft, ToggleRight, Filter, RefreshCw, Save, AlertCircle, Info
+  ToggleLeft, ToggleRight, Filter, RefreshCw, Save, AlertCircle, Info,
+  Bot, Activity, Stethoscope, Users, DollarSign, AlertOctagon, Calendar, Sparkles
 } from 'lucide-react';
 import { 
   ALL_RULES, MUTEX_RULES, RESTRICTION_RULES, PRIORITY_RULES, TIME_CONSTRAINT_RULES,
   getRulesByType, getRuleById, getRulesStatistics, evaluateRules,
-  type Rule, type RuleType, type RuleSeverity, type RuleEvaluationResult, type RuleEngineContext
+  type Rule, type RuleType, type RuleSeverity, type RuleEvaluationResult, type RuleEngineContext,
+  type RuleCategory
 } from '../data/rulesData';
 import { APPOINTMENTS, EXAM_ITEMS, DEVICES, PATIENTS } from '../data/initialData';
+import AIQuickBook from '../components/AIQuickBook';
 
-type TabType = 'mutex' | 'restriction' | 'priority' | 'timeConstraint';
-type ModalType = 'view' | 'edit' | 'create' | 'test';
+// 类别类型
+type CategoryTabType = 'all' | 'exam-mutex' | 'device-mutex' | 'patient-restriction' | 'time-constraint' | 'department' | 'insurance' | 'emergency' | 'ai-book';
 
-const TAB_CONFIG: Record<TabType, { label: string; icon: typeof Shield; color: string; rules: Rule[] }> = {
-  mutex: { label: '互斥规则', icon: AlertTriangle, color: '#ef4444', rules: MUTEX_RULES },
-  restriction: { label: '限制规则', icon: Shield, color: '#f59e0b', rules: RESTRICTION_RULES },
-  priority: { label: '优先级规则', icon: BarChart3, color: '#3b82f6', rules: PRIORITY_RULES },
-  timeConstraint: { label: '时间约束', icon: Clock, color: '#10b981', rules: TIME_CONSTRAINT_RULES },
+// 类别配置
+interface CategoryConfig {
+  key: CategoryTabType;
+  label: string;
+  icon: typeof Shield;
+  color: string;
+  description: string;
+}
+
+const CATEGORY_TABS: CategoryConfig[] = [
+  { key: 'all', label: '全部', icon: BarChart3, color: '#1e40af', description: '所有规则' },
+  { key: 'exam-mutex', label: '检查项目互斥', icon: AlertTriangle, color: '#ef4444', description: '检查项目之间的互斥规则' },
+  { key: 'device-mutex', label: '设备互斥', icon: Stethoscope, color: '#f59e0b', description: '设备使用互斥规则' },
+  { key: 'patient-restriction', label: '患者限制', icon: Users, color: '#8b5cf6', description: '患者相关限制规则' },
+  { key: 'time-constraint', label: '时间约束', icon: Clock, color: '#10b981', description: '时间相关约束规则' },
+  { key: 'department', label: '科室协同', icon: Activity, color: '#06b6d4', description: '科室协同规则' },
+  { key: 'insurance', label: '医保/费用', icon: DollarSign, color: '#84cc16', description: '医保和费用相关规则' },
+  { key: 'emergency', label: '危急/急诊', icon: AlertOctagon, color: '#dc2626', description: '危急和急诊相关规则' },
+  { key: 'ai-book', label: 'AI预约', icon: Sparkles, color: '#6366f1', description: 'AI智能预约' },
+];
+
+// 状态筛选
+type StatusFilterType = 'all' | 'enabled' | 'disabled';
+
+const STATUS_CONFIG: Record<StatusFilterType, { label: string; color: string }> = {
+  all: { label: '全部', color: '#6b7280' },
+  enabled: { label: '已启用', color: '#10b981' },
+  disabled: { label: '已禁用', color: '#6b7280' },
 };
 
 const SEVERITY_COLORS: Record<RuleSeverity, { bg: string; text: string; border: string }> = {
@@ -28,12 +54,56 @@ const SEVERITY_COLORS: Record<RuleSeverity, { bg: string; text: string; border: 
   info: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
 };
 
+// 获取规则统计信息
+function getCategoryStats(rules: Rule[]) {
+  const stats = {
+    total: rules.length,
+    enabled: rules.filter(r => r.enabled).length,
+    disabled: rules.filter(r => !r.enabled).length,
+    examMutex: rules.filter(r => r.category === 'exam' && r.type === 'mutex').length,
+    deviceMutex: rules.filter(r => r.category === 'device' && r.type === 'mutex').length,
+    patientRestriction: rules.filter(r => r.category === 'patient' && (r.type === 'restriction' || r.type === 'mutex')).length,
+    timeConstraint: rules.filter(r => r.type === 'timeConstraint' || r.category === 'time').length,
+    department: rules.filter(r => r.category === 'department').length,
+    insurance: rules.filter(r => r.category === 'insurance').length,
+    emergency: rules.filter(r => r.category === 'emergency').length,
+  };
+  return stats;
+}
+
+// 按类别筛选规则
+function filterRulesByCategory(rules: Rule[], category: CategoryTabType): Rule[] {
+  switch (category) {
+    case 'all':
+      return rules;
+    case 'exam-mutex':
+      return rules.filter(r => r.category === 'exam' && r.type === 'mutex');
+    case 'device-mutex':
+      return rules.filter(r => r.category === 'device' && r.type === 'mutex');
+    case 'patient-restriction':
+      return rules.filter(r => r.category === 'patient' && (r.type === 'restriction' || r.type === 'mutex'));
+    case 'time-constraint':
+      return rules.filter(r => r.type === 'timeConstraint' || r.category === 'time');
+    case 'department':
+      return rules.filter(r => r.category === 'department');
+    case 'insurance':
+      return rules.filter(r => r.category === 'insurance');
+    case 'emergency':
+      return rules.filter(r => r.category === 'emergency');
+    case 'ai-book':
+      return []; // AI预约暂无规则
+    default:
+      return rules;
+  }
+}
+
 export default function RulesConfigPage({ currentRole }: { currentRole: string }) {
-  const [activeTab, setActiveTab] = useState<TabType>('mutex');
+  const [activeCategory, setActiveCategory] = useState<CategoryTabType>('all');
   const [rules, setRules] = useState<Rule[]>(ALL_RULES);
   const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterType>('all');
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<ModalType>('view');
+  const [modalType, setModalType] = useState<'view' | 'edit' | 'create' | 'test'>('view');
   const [selectedRule, setSelectedRule] = useState<Rule | null>(null);
   const [testResult, setTestResult] = useState<RuleEvaluationResult | null>(null);
   const [showTestPanel, setShowTestPanel] = useState(false);
@@ -60,15 +130,54 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
     deviceUsedSlots: 28,
   });
 
-  const currentTabConfig = TAB_CONFIG[activeTab];
-  const currentRules = rules.filter(r => r.type === activeTab);
-  
-  const filteredRules = currentRules.filter(rule => {
-    if (!searchText) return true;
-    return rule.name.includes(searchText) || 
-           rule.description.includes(searchText) || 
-           rule.id.includes(searchText);
-  });
+  const currentCategoryConfig = CATEGORY_TABS.find(t => t.key === activeCategory) || CATEGORY_TABS[0];
+  const Icon = currentCategoryConfig.icon;
+
+  // 计算各类别规则数量
+  const categoryCounts = useMemo(() => {
+    const counts: Record<CategoryTabType, number> = {} as Record<CategoryTabType, number>;
+    CATEGORY_TABS.forEach(tab => {
+      counts[tab.key] = filterRulesByCategory(ALL_RULES, tab.key).length;
+    });
+    return counts;
+  }, []);
+
+  // 全局统计
+  const globalStats = useMemo(() => ({
+    total: ALL_RULES.length,
+    enabled: ALL_RULES.filter(r => r.enabled).length,
+    disabled: ALL_RULES.filter(r => !r.enabled).length,
+  }), []);
+
+  // 启用/禁用比例
+  const enabledRatio = globalStats.total > 0 
+    ? Math.round((globalStats.enabled / globalStats.total) * 100) 
+    : 0;
+
+  // 筛选规则
+  const filteredRules = useMemo(() => {
+    let result = filterRulesByCategory(rules, activeCategory);
+    
+    // 状态筛选
+    if (statusFilter === 'enabled') {
+      result = result.filter(r => r.enabled);
+    } else if (statusFilter === 'disabled') {
+      result = result.filter(r => !r.enabled);
+    }
+    
+    // 搜索筛选
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase();
+      result = result.filter(r => 
+        r.name.toLowerCase().includes(search) ||
+        r.description.toLowerCase().includes(search) ||
+        r.message.toLowerCase().includes(search) ||
+        r.id.toLowerCase().includes(search)
+      );
+    }
+    
+    return result;
+  }, [rules, activeCategory, statusFilter, searchText]);
 
   const stats = getRulesStatistics();
 
@@ -109,6 +218,12 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
     return { padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.bg, color: s.text, border: `1px solid ${s.border}` };
   };
 
+  const handleDelete = (ruleId: string) => {
+    if (confirm('确定要删除此规则吗？')) {
+      setRules(prev => prev.filter(r => r.id !== ruleId));
+    }
+  };
+
   return (
     <div style={{ padding: 24, background: '#f0f4f8', minHeight: '100vh', fontFamily: '"Segoe UI", sans-serif' }}>
       {/* 页面标题 */}
@@ -118,7 +233,7 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
             <h1 style={{ fontSize: 22, fontWeight: 600, color: '#1e40af', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
               <Shield size={24} />预约规则配置
             </h1>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0 0' }}>配置和管理预约规则引擎，支持互斥、限制、优先级和时间约束</p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0 0' }}>配置和管理预约规则引擎，支持规则分类筛选、搜索和状态管理</p>
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <button onClick={handleTest} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#ffffff', color: '#10b981', border: '1px solid #10b981', borderRadius: 4, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
@@ -133,135 +248,231 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
         </div>
       </div>
 
-      {/* 统计卡片 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16 }}>
-        {[
-          { label: '总规则', value: stats.total, color: '#1e40af' },
-          { label: '已启用', value: stats.enabled, color: '#10b981' },
-          { label: '已禁用', value: stats.disabled, color: '#6b7280' },
-          { label: '互斥规则', value: stats.mutexCount, color: '#ef4444' },
-          { label: '限制规则', value: stats.restrictionCount, color: '#f59e0b' },
-          { label: '时间约束', value: stats.timeConstraintCount, color: '#10b981' },
-        ].map(stat => (
-          <div key={stat.label} style={{ background: '#ffffff', borderRadius: 8, padding: '14px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{stat.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+      {/* 规则统计面板 */}
+      <div style={{ background: '#ffffff', borderRadius: 8, padding: '16px 20px', marginBottom: 16, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <BarChart3 size={16} color="#1e40af" />
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#1e40af' }}>规则统计</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 16 }}>
+          {/* 总规则数 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0f4f8', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>总规则数</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#1e40af' }}>{globalStats.total}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>全部规则</div>
           </div>
-        ))}
+          {/* 已启用 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f0fdf4', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>已启用</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#10b981' }}>{globalStats.enabled}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{enabledRatio}% 启用率</div>
+          </div>
+          {/* 已禁用 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f9fafb', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>已禁用</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#6b7280' }}>{globalStats.disabled}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{100 - enabledRatio}% 禁用率</div>
+          </div>
+          {/* 检查项目互斥 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fef2f2', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>检查项目互斥</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#ef4444' }}>{categoryCounts['exam-mutex']}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>互斥规则</div>
+          </div>
+          {/* 设备互斥 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#fffbeb', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>设备互斥</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#f59e0b' }}>{categoryCounts['device-mutex']}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>互斥规则</div>
+          </div>
+          {/* 患者限制 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#f5f3ff', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>患者限制</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#8b5cf6' }}>{categoryCounts['patient-restriction']}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>限制规则</div>
+          </div>
+          {/* 时间约束 */}
+          <div style={{ textAlign: 'center', padding: '12px 8px', background: '#ecfdf5', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>时间约束</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#10b981' }}>{categoryCounts['time-constraint']}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>时间规则</div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 12 }}>
+          {/* 科室协同 */}
+          <div style={{ textAlign: 'center', padding: '10px 8px', background: '#f0f9ff', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>科室协同</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#06b6d4' }}>{categoryCounts['department']}</div>
+          </div>
+          {/* 医保/费用 */}
+          <div style={{ textAlign: 'center', padding: '10px 8px', background: '#f7fee7', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>医保/费用</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#84cc16' }}>{categoryCounts['insurance']}</div>
+          </div>
+          {/* 危急/急诊 */}
+          <div style={{ textAlign: 'center', padding: '10px 8px', background: '#fef2f2', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>危急/急诊</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#dc2626' }}>{categoryCounts['emergency']}</div>
+          </div>
+          {/* AI预约 */}
+          <div style={{ textAlign: 'center', padding: '10px 8px', background: '#eef2ff', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>AI预约</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#6366f1' }}>{categoryCounts['ai-book']}</div>
+            <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>待开发</div>
+          </div>
+        </div>
       </div>
 
-      {/* Tab切换 */}
+      {/* 类别Tab切换 */}
       <div style={{ background: '#ffffff', borderRadius: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: 16 }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
-          {(Object.keys(TAB_CONFIG) as TabType[]).map(tab => {
-            const config = TAB_CONFIG[tab];
-            const Icon = config.icon;
-            const isActive = activeTab === tab;
-            const tabRules = rules.filter(r => r.type === tab);
-            const enabledCount = tabRules.filter(r => r.enabled).length;
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', overflowX: 'auto' }}>
+          {CATEGORY_TABS.map(tab => {
+            const TabIcon = tab.icon;
+            const isActive = activeCategory === tab.key;
+            const count = categoryCounts[tab.key];
             
             return (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.key}
+                onClick={() => setActiveCategory(tab.key)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '14px 20px',
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '14px 16px',
                   border: 'none', background: 'transparent', cursor: 'pointer',
-                  borderBottom: isActive ? `2px solid ${config.color}` : '2px solid transparent',
-                  color: isActive ? config.color : '#6b7280', fontWeight: isActive ? 600 : 500,
-                  fontSize: 13, transition: 'all 0.2s',
+                  borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
+                  color: isActive ? tab.color : '#6b7280', fontWeight: isActive ? 600 : 500,
+                  fontSize: 13, transition: 'all 0.2s', whiteSpace: 'nowrap',
                 }}
               >
-                <Icon size={16} />
-                {config.label}
+                <TabIcon size={16} />
+                {tab.label}
                 <span style={{ 
                   padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
-                  background: isActive ? `${config.color}20` : '#f3f4f6',
-                  color: isActive ? config.color : '#6b7280',
+                  background: isActive ? `${tab.color}20` : '#f3f4f6',
+                  color: isActive ? tab.color : '#6b7280',
                 }}>
-                  {enabledCount}/{tabRules.length}
+                  {count}
                 </span>
               </button>
             );
           })}
         </div>
 
-        {/* Tab内容 */}
+        {/* Tab内容区域 */}
         <div style={{ padding: 16 }}>
-          {/* 搜索栏 */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-              <input 
-                type="text" 
-                placeholder={`搜索${currentTabConfig.label}...`} 
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px 8px 38px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, outline: 'none' }}
-              />
-            </div>
-            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center' }}>
-              共 {filteredRules.length} 条规则
-            </div>
-          </div>
-
-          {/* 规则列表 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filteredRules.map(rule => (
-              <div 
-                key={rule.id}
-                style={{ 
-                  display: 'flex', alignItems: 'center', padding: '14px 16px',
-                  background: rule.enabled ? '#ffffff' : '#f9fafb', border: '1px solid #e5e7eb',
-                  borderRadius: 8, gap: 12, opacity: rule.enabled ? 1 : 0.6,
-                  transition: 'all 0.2s',
-                }}
-              >
-                {/* 状态指示 */}
-                <div style={{ 
-                  width: 8, height: 40, borderRadius: 4,
-                  background: rule.enabled ? currentTabConfig.color : '#d1d5db',
-                }} />
-                
-                {/* 规则信息 */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{rule.name}</span>
-                    <span style={severityTag(rule.severity)}>{rule.severity === 'error' ? '错误' : rule.severity === 'warning' ? '警告' : '提示'}</span>
-                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: '#f3f4f6', color: '#6b7280' }}>
-                      优先级 {rule.priority}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>{rule.description}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                    {rule.tags.map(tag => (
-                      <span key={tag} style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, background: '#e0e7ff', color: '#4338ca' }}>{tag}</span>
-                    ))}
-                  </div>
+          {/* AI预约Tab */}
+          {activeCategory === 'ai-book' ? (
+            <AIQuickBook />
+          ) : (
+            <>
+              {/* 搜索和筛选栏 */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                  <input 
+                    type="text" 
+                    placeholder={`搜索规则名称、描述、提示信息...`} 
+                    value={searchText}
+                    onChange={e => setSearchText(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px 8px 38px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, outline: 'none' }}
+                  />
                 </div>
-
-                {/* 操作按钮 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button onClick={() => handleToggleRule(rule.id)} title={rule.enabled ? '禁用' : '启用'} style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4 }}>
-                    {rule.enabled ? <ToggleRight size={22} color="#10b981" /> : <ToggleLeft size={22} color="#9ca3af" />}
-                  </button>
-                  <button onClick={() => handleView(rule)} title="查看" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#6b7280' }}>
-                    <Eye size={16} />
-                  </button>
-                  {currentRole === '管理员' && (
-                    <>
-                      <button onClick={() => handleEdit(rule)} title="编辑" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#6b7280' }}>
-                        <Edit2 size={16} />
+                {/* 状态筛选 */}
+                <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', padding: 4, borderRadius: 6 }}>
+                  {(Object.keys(STATUS_CONFIG) as StatusFilterType[]).map(status => {
+                    const isActive = statusFilter === status;
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => setStatusFilter(status)}
+                        style={{
+                          padding: '6px 12px', border: 'none', borderRadius: 4, fontSize: 12,
+                          fontWeight: isActive ? 600 : 500, cursor: 'pointer',
+                          background: isActive ? '#ffffff' : 'transparent',
+                          color: isActive ? STATUS_CONFIG[status].color : '#6b7280',
+                          boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                        }}
+                      >
+                        {STATUS_CONFIG[status].label}
                       </button>
-                      <button onClick={() => handleDelete(rule.id)} title="删除" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#ef4444' }}>
-                        <Trash2 size={16} />
-                      </button>
-                    </>
-                  )}
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                  共 <span style={{ fontWeight: 600, color: '#1e40af', margin: '0 4px' }}>{filteredRules.length}</span> 条规则
                 </div>
               </div>
-            ))}
-          </div>
+
+              {/* 规则列表 */}
+              {filteredRules.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 8 }}>
+                  <Search size={32} color="#9ca3af" style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                  <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>未找到匹配的规则</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {filteredRules.map(rule => (
+                    <div 
+                      key={rule.id}
+                      style={{ 
+                        display: 'flex', alignItems: 'center', padding: '14px 16px',
+                        background: rule.enabled ? '#ffffff' : '#f9fafb', border: '1px solid #e5e7eb',
+                        borderRadius: 8, gap: 12, opacity: rule.enabled ? 1 : 0.6,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {/* 状态指示 */}
+                      <div style={{ 
+                        width: 8, height: 40, borderRadius: 4,
+                        background: rule.enabled ? currentCategoryConfig.color : '#d1d5db',
+                      }} />
+                      
+                      {/* 规则信息 */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{rule.name}</span>
+                          <span style={severityTag(rule.severity)}>
+                            {rule.severity === 'error' ? '错误' : rule.severity === 'warning' ? '警告' : '提示'}
+                          </span>
+                          <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: '#f3f4f6', color: '#6b7280' }}>
+                            优先级 {rule.priority}
+                          </span>
+                          <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, background: '#e0e7ff', color: '#4338ca' }}>
+                            {rule.category}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>{rule.description}</div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                          {rule.tags.map(tag => (
+                            <span key={tag} style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, background: '#e0e7ff', color: '#4338ca' }}>{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 操作按钮 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button onClick={() => handleToggleRule(rule.id)} title={rule.enabled ? '禁用' : '启用'} style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4 }}>
+                          {rule.enabled ? <ToggleRight size={22} color="#10b981" /> : <ToggleLeft size={22} color="#9ca3af" />}
+                        </button>
+                        <button onClick={() => handleView(rule)} title="查看" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#6b7280' }}>
+                          <Eye size={16} />
+                        </button>
+                        {currentRole === '管理员' && (
+                          <>
+                            <button onClick={() => handleEdit(rule)} title="编辑" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#6b7280' }}>
+                              <Edit2 size={16} />
+                            </button>
+                            <button onClick={() => handleDelete(rule.id)} title="删除" style={{ padding: 8, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 4, color: '#ef4444' }}>
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -513,12 +724,14 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>类型</label>
-                    <span style={{ 
-                      padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500,
-                      background: TAB_CONFIG[selectedRule.type as TabType]?.color + '20' || '#f3f4f6',
-                      color: TAB_CONFIG[selectedRule.type as TabType]?.color || '#6b7280',
-                    }}>
-                      {TAB_CONFIG[selectedRule.type as TabType]?.label || selectedRule.type}
+                    <span style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500, background: '#f3f4f6', color: '#6b7280' }}>
+                      {selectedRule.type}
+                    </span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>类别</label>
+                    <span style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500, background: '#e0e7ff', color: '#4338ca' }}>
+                      {selectedRule.category}
                     </span>
                   </div>
                   <div>
@@ -595,11 +808,4 @@ export default function RulesConfigPage({ currentRole }: { currentRole: string }
       )}
     </div>
   );
-}
-
-function handleDelete(ruleId: string) {
-  if (confirm('确定要删除此规则吗？')) {
-    // 实际应该调用删除API
-    console.log('Delete rule:', ruleId);
-  }
 }

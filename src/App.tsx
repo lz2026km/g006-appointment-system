@@ -101,7 +101,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, currentRole }) =
             fontSize: 11,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
-          }}>v0.9.0</span>
+          }}>v1.0.0</span>
         )}
       </div>
 
@@ -191,7 +191,7 @@ const Header: React.FC<{ collapsed: boolean; currentRole: string; onRoleChange: 
       transition: 'left 0.2s',
     }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: PRIMARY }}>
-        006 全院医技检查预约系统 v0.9.0
+        006 全院医技检查预约系统 v1.0.0
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
